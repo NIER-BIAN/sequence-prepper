@@ -14,49 +14,56 @@ import argparse
 from Bio import SeqIO
 import pandas as pd
 
+
 #========================================================================
 
 
-# FASTA PREPROCESSING: Read in alignment with 5709 seqs x 18603 pos
-#                      Compute completion
-
-
-with open("DataBackUp_5709Seq/Supermatrix5079Seq.fa", "r") as filein:
+def AppendSeqCompletion(CSVPath, FastaPath):
     
-    fasta = [i.split('\n') for i in filein.read().strip().split('\n\n')]
+    """
+    Reads in CSV file. Append completion score to sequence.
+    Reads in alignment as fasta file, see how complete they are.
     
+    In: (2 item) Strings where strings contain relative path to metadata csv file and its assocaited alignment/fasta file.
+    Out: (1 item) Pandas dataframe with all CSV columns and % Completion.
+    """
+    
+    CSVDF = pd.read_csv(str(CSVPath))
+    
+    with open(str(FastaPath), "r") as filein:
+        fasta = [i.split('\n') for i in filein.read().strip().split('\n\n')]
     SeqIDsTemp = fasta[0][::2]
     SeqIDs = [EachString.strip('>') for EachString in SeqIDsTemp]
-    
     Seqs = fasta[0][1::2]
-    Completion = [len(EachString) - EachString.count('-') for EachString in Seqs]
+    Completion = [1 - (EachString.count('-')/len(EachString)) for EachString in Seqs]
+    TempDict = {'db_id' : SeqIDs, 'Completion' : Completion}
+    FastaDF = pd.DataFrame(TempDict)
+
+    Outdf = pd.merge(CSVDF, FastaDF, on="db_id")
+
+    return Outdf
+
+ #========================================================================
+
+
+def CleanData(df, cutoff):
     
-TempDict = {'db_id' : SeqIDs, 'Completion' : Completion}
-dfFasta = pd.DataFrame(TempDict)
+    """
+    Reads in dataframe and drop the non-negotiables.
+    NaNs in the genus/species columns are filled.
+    
+    In: (2 item) Dataframe representing all metadata with % completion.
+                 Min % Complettion required as float (e.g. 0.90)
+    Out: (1 item) Cleaned df with (complete) sequence representation, at least *some* phylo membership information, and useful columns.
+    """
+    
+    df = df[df.Completion.notna()]
+    # Cannot not have actualy sequence
 
+    df = df[df.Completion > float(cutoff)]
+    # Cannot have a vastly incomplete sequence
 
-#========================================================================
-
-
-# CSV PREPROCESSING: Read in dataframe with 5938 rows x 34 columns
-#                    Merge completion
-
-dfCSV = pd.read_csv("AllMitogenomesMaster_2021-04-17v2021-04-25.csv")
-df = pd.merge(dfCSV, dfFasta, on="db_id")
-
-
-#========================================================================
-
-
-# DROP NON-NEGOTIABLES
-
-df = df[df.Completion.notna()]
-# Cannot not have actualy sequence
-
-df = df[df.Completion > 10000]
-# Cannot have a vastly incomplete sequence
-
-df = df.drop(df[
+    df = df.drop(df[
         (df.species.isna()) &
         (df.genus.isna()) &
         (df.tribe.isna()) &
@@ -65,49 +72,46 @@ df = df.drop(df[
         (df.superfamily.isna()) &
         (df.infraorder.isna())
     ].index)
-# Cannot not have any membership information
+    # Cannot not have any membership information
 
-
-# DROP NEGOTIABLES, EXPERIMENTALLY
-
-AllColumns = df.columns.values.tolist()
-for Col in AllColumns:
-    if len(df[Col].dropna().unique()) <= 1:
-         df = df.drop([Col], axis=1)
-         # Drop all cols that are all NaNs
-         # or all NaNs + one other unique value
-         # e.g. print(df['class'].dropna().unique()) returns 'Insecta'...
-    else:
-        NaNCount = (df[Col].isna()).sum()
-        DataCount = len(df) - NaNCount   
-        print (f"{Col}: {DataCount}/{len(df)} not NaNs")
-        print(f"{len(df[Col].dropna().unique())} unique not NaN entries.")
-        print("\n")
-
-
-#========================================================================
-
-
-# DECIDE ON INDEXING:
-
-df = df.set_index(['family']).sort_index()
-# 3015/3179 not NaNs with 127 unique not NaN entries.
-
-print(df.index.value_counts()[0:10])
-# Top ten families
+    AllColumns = df.columns.values.tolist()
+    for Col in AllColumns:
+        if len(df[Col].dropna().unique()) <= 1:
+            df = df.drop([Col], axis=1)
+            # Drop all cols that are all NaNs
+            # or all NaNs + one other unique value
+            # e.g. print(df['class'].dropna().unique())
+            # returns 'Insecta'
     
-CurculionidaeDF = df[df.index == 'Curculionidae'] # 511 entries
-StaphylinidaeDF = df[df.index == 'Staphylinidae'] # 385 entries
-CerambycidaeDF = df[df.index == 'Cerambycidae']   # 164 entries
-ScarabaeidaeDF = df[df.index == 'Scarabaeidae']   # 127 entries
-CarabidaeDF = df[df.index == 'Carabidae']         # 115 entries
-TenebrionidaeDF = df[df.index == 'Tenebrionidae'] # 81 entries
-MordellidaeDF = df[df.index == 'Mordellidae']     # 76 entries
-CoccinellidaeDF = df[df.index == 'Coccinellidae'] # 71 entries
-NitidulidaeDF = df[df.index == 'Nitidulidae']     # 70 entries
-ElateridaeDF = df[df.index == 'Elateridae']       # 50 entries
+    FillNaNValues = {"genus": "Unknown-genus", "species": "Unknown-species"}
+    Outdf = df.fillna(value = FillNaNValues)
+
+    return Outdf
 
 
 #========================================================================
 
 
+def WriteRenamedFasta(df, ReadPath, WritePath):
+    
+    df = df.set_index(['db_id']).sort_index()
+    df.index = '>' + df.index.astype(str)
+
+    NameDict = {}
+    for index, row in df.iterrows():
+        CommonName = f">{row['genus']}_{row['species']}_({row['family']})"
+        NameDict[index] = CommonName
+
+    with open(str(ReadPath), "r") as filein:
+        fasta = [i.split('\n') for i in filein.read().strip().split('\n\n')]
+    SeqIDs = fasta[0][::2]
+    Seqs = fasta[0][1::2]
+    SeqsDict = dict(zip(SeqIDs, Seqs))
+
+    FastaOut = open(WritePath, "a")
+    for db_id, NewName in NameDict.items():
+        FastaOut.write(NewName + '\n')
+        FastaOut.write(SeqsDict[db_id] + '\n')
+    FastaOut.close()
+
+    #========================================================================
