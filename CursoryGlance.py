@@ -1,6 +1,4 @@
-# First look at the whole dataset
-
-def LinkaGlance(df):
+def GlanceOfGod(df):
     
     AllColumns = df.columns.values.tolist()
     for Col in AllColumns:

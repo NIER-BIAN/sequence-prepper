@@ -1,6 +1,6 @@
 
 
-# Description: First look at all given data
+# Description: Functions for taking a first look at all given data
 
 
 #========================================================================
@@ -24,7 +24,7 @@ def AppendSeqCompletion(CSVPath, FastaPath):
     Reads in CSV file. Append completion score to sequence.
     Reads in alignment as fasta file, see how complete they are.
     
-    In: (2 item) Strings where strings contain relative path to metadata csv file and its assocaited alignment/fasta file.
+    In: (2 items) Strings where strings contain relative path to metadata csv file and its assocaited alignment/fasta file.
     Out: (1 item) Pandas dataframe with all CSV columns and % Completion.
     """
     
@@ -43,7 +43,7 @@ def AppendSeqCompletion(CSVPath, FastaPath):
 
     return Outdf
 
- #========================================================================
+#========================================================================
 
 
 def CleanData(df, cutoff):
@@ -52,13 +52,13 @@ def CleanData(df, cutoff):
     Reads in dataframe and drop the non-negotiables.
     NaNs in the genus/species columns are filled.
     
-    In: (2 item) Dataframe representing all metadata with % completion.
+    In: (2 items) Dataframe representing all metadata with % completion.
                  Min % Complettion required as float (e.g. 0.90)
     Out: (1 item) Cleaned df with (complete) sequence representation, at least *some* phylo membership information, and useful columns.
     """
     
     df = df[df.Completion.notna()]
-    # Cannot not have actualy sequence
+    # Cannot not have actual sequence
 
     df = df[df.Completion > float(cutoff)]
     # Cannot have a vastly incomplete sequence
@@ -93,7 +93,16 @@ def CleanData(df, cutoff):
 
 
 def WriteRenamedFasta(df, ReadPath, WritePath):
+
+    """
+    Reads in old fasta, and renames all entries with respect to new names specified in dataframe.
     
+    In: (3 items) Dataframe containing db_id and new names
+                  ReadPath to old fasta
+                  WritePath to new fasta
+    Out: (1 item) Fasta file with renamed entries.
+    """
+        
     df = df.set_index(['db_id']).sort_index()
     df.index = '>' + df.index.astype(str)
 
