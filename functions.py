@@ -8,21 +8,13 @@
 
 # IMPORTS
 
-import matplotlib.pyplot as plt
-import argparse
-
-from Bio import SeqIO
 import pandas as pd
-
-
-#========================================================================
-
 
 def AppendSeqCompletion(CSVPath, FastaPath):
     
     """
-    Reads in CSV file. Append completion score to sequence.
-    Reads in alignment as fasta file, see how complete they are.
+    Reads in CSV file. Append completion score to enrty if entry in Fasta.
+    Reads in alignment as fasta file for completion score.
     
     In: (2 items) Strings where strings contain relative path to metadata csv file and its assocaited alignment/fasta file.
     Out: (1 item) Pandas dataframe with all CSV columns and % Completion.
@@ -46,22 +38,18 @@ def AppendSeqCompletion(CSVPath, FastaPath):
 #========================================================================
 
 
-def CleanData(df, cutoff):
+def CleanRows(df):
     
     """
     Reads in dataframe and drop the non-negotiables.
     NaNs in the genus/species columns are filled.
     
-    In: (2 items) Dataframe representing all metadata with % completion.
-                 Min % Complettion required as float (e.g. 0.90)
-    Out: (1 item) Cleaned df with (complete) sequence representation, at least *some* phylo membership information, and useful columns.
+    In: (1 items) Dataframe representing all metadata with % completion.
+    Out: (1 item) Cleaned df with at least *some* phylo membership information, and useful columns.
     """
     
     df = df[df.Completion.notna()]
     # Cannot not have actual sequence
-
-    df = df[df.Completion > float(cutoff)]
-    # Cannot have a vastly incomplete sequence
 
     df = df.drop(df[
         (df.species.isna()) &
@@ -74,6 +62,14 @@ def CleanData(df, cutoff):
     ].index)
     # Cannot not have any membership information
 
+    return df
+
+
+#========================================================================
+
+
+def CleanCols(df):
+    
     AllColumns = df.columns.values.tolist()
     for Col in AllColumns:
         if len(df[Col].dropna().unique()) <= 1:
@@ -82,27 +78,32 @@ def CleanData(df, cutoff):
             # or all NaNs + one other unique value
             # e.g. print(df['class'].dropna().unique())
             # returns 'Insecta'
-    
-    FillNaNValues = {"genus": "Unknown-genus", "species": "Unknown-species"}
-    Outdf = df.fillna(value = FillNaNValues)
+            print(f"{Col}: Dropped. One or fewer not NaN entries.")
+        else:
+            NaNCount = (df[Col].isna()).sum()
+            DataCount = len(df) - NaNCount
+            print(f"{Col}: {DataCount}/{len(df)} not NaNs")
+            print(f"{len(df[Col].dropna().unique())} unique not NaN entries.")
 
-    return Outdf
+    return df
 
-
+            
 #========================================================================
 
 
 def WriteRenamedFasta(df, ReadPath, WritePath):
 
     """
-    Reads in old fasta, and renames all entries with respect to new names specified in dataframe.
+    Reads in old fasta, and renames all entries with respect to
+    info contained in dataframe. Write new names and seqs to new file."
     
     In: (3 items) Dataframe containing db_id and new names
                   ReadPath to old fasta
                   WritePath to new fasta
     Out: (1 item) Fasta file with renamed entries.
     """
-        
+    
+    df = df.reset_index(level='family')
     df = df.set_index(['db_id']).sort_index()
     df.index = '>' + df.index.astype(str)
 

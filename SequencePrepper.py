@@ -1,70 +1,141 @@
 
 
-# Description: Linka's sequence prepper
+# Description: Functions for taking a first look at all given data
 
 
-# I want this to:
-# Look here in this database -Database
-# Look here in this fasta for the sequences -FastaIn
-# but only let in almost complete sequences -MinCompletion
-# I want these families -Families
+# Clean Rows second round, look for complete sequences (MinCompletion)
+# And specified families (TargetFamilies)
+
 # Fill "NaN"s with "unknown genus"/"unknown species"
-# Rename them with Genus Species (Family)
-# in a separate fasta file -FastaOut
+# Rename them like this: Genus Species, family
+# Write to a separate fasta file (FastaOut)
 
 #========================================================================
 
-
-# IMPORTS
 
 from functions import *
 import pandas as pd
 
+
 #========================================================================
 
 
-def run(args):
+# Look here in this database (CSVPath)
+# Look here in this fasta for the sequences (FastaPath)
+# AppendSeqCompletion
 
-    PathToDB = args.Database
-    PathToFastaIn = args.FastaIn
-    CompCutoff = args.MinCompletion
-    TargetFamilies = args.Families.split(' ')
-    FastaOut = args.FastaOut
+CSVPath = "AllMitogenomesMaster_2021-04-17v2021-04-25.csv"
+FastaPath = "Supermatrix498Seq.fasta"
 
-    print("\n")
-    DF = AppendSeqCompletion(PathToDB, PathToFastaIn)
-    print(f"Read in full database with {len(DF)} entries.")
+DF = AppendSeqCompletion(CSVPath, FastaPath)
+print(f"Read in full database with {len(DF)} entries.")
+print("\n")
 
-    print("\n")
-    DFRemoveNaNs = CleanData(DF, CompCutoff)
-    print("Dropped entries without sequences")
-    print("Dropped sequences that are less than {CompCutoff*100}% complete.")
-    print("Dropped sequences with no taxonomic membership whatsoever.")
-    print(f"Now working on cleaned database with {len(DFRemoveNaNs)} entries.")
 
-    print("\n")
-    DFCherryPicked = DFRemoveNaNs.loc[
-        DFRemoveNaNs['family'].isin(TargetFamilies)
+#========================================================================
+
+
+# Clean Rows first round, drop meaningless rows (no sequence, no tax info)
+# Clean Cols, drop meaningless cols
+
+DFCleanRowsOnly = CleanRows(DF)
+print("Dropped entries without sequences")
+print("Dropped sequences with no taxonomic membership whatsoever.")
+print(f"Now working on cleaned database with {len(DFCleanRowsOnly)} entries.")
+print("\n")
+
+print(f"Cleaning Cols")
+DFCleansed = CleanCols(DFCleanRowsOnly)
+print("\n")
+
+#========================================================================
+
+
+# What do you even have? How many entries in each families
+# And how complete are they?
+# Write out CSV report describing final availability
+
+DFIndexed = DFCleansed.set_index(['family']).sort_index()
+# 3015/3179 not NaNs with 127 unique not NaN entries.
+# 488/498 not NaNs with 144 unique not NaN entries.
+
+FamilyCounts = DFIndexed.index.value_counts()
+# Which families are most numerous
+
+FamilyCompletion = DFIndexed['Completion'].groupby(['family']).mean()
+# Which families are most complete
+
+FamilyMinCompletion = DFIndexed['Completion'].groupby(['family']).min()
+
+CursoryGlanceReport = pd.DataFrame(dict(Counts = FamilyCounts, AverageCompletion = FamilyCompletion, MinimalCompletion = FamilyMinCompletion)).sort_values(by=['Counts'], ascending=False)
+
+CursoryGlanceReport.to_csv("498SeqAvailabilityReport.csv")
+
+
+#========================================================================
+
+
+# Set your standards and commit to choosing them
+# Keep in mind how they were aligned.
+
+MinCompletion = 0.80
+
+DFCompletionFiltered = DFIndexed[DFIndexed.Completion >= MinCompletion]
+print(f"Cherrypicked sequences that are at least {MinCompletion*100}% complete.")
+print("\n")
+print(f"Now working on completion-filtered database with {len(DFCompletionFiltered)} entries.")
+
+
+#========================================================================
+
+# Fill NaNs
+# Write out CSV report describing family-wise completion now that
+# completion has been filtered
+
+FillNaNValues = {"genus": "UnknownGenus", "species": "UnknownSpecies"}
+DFFilledNAs = DFCompletionFiltered.fillna(value = FillNaNValues)
+print(f"Filled NaNs.")
+
+FamilyCounts = DFFilledNAs.index.value_counts()
+# Which families are most numerous
+FamilyCompletion = DFFilledNAs['Completion'].groupby(['family']).mean()
+# Which families are most complete
+FamilyMinCompletion = DFFilledNAs['Completion'].groupby(['family']).min()
+
+SecondRoundReport = pd.DataFrame(dict(Counts = FamilyCounts, AverageCompletion = FamilyCompletion, MinimalCompletion = FamilyMinCompletion)).sort_values(by=['Counts'], ascending=False)
+
+
+#========================================================================
+
+# Pick top N families
+# Write out CSV report describing what was finally chosen
+
+N = 10
+TargetFamilies = list(SecondRoundReport.index[0:N])
+DFCompAndFamFiltered = DFFilledNAs.loc[
+    DFFilledNAs.index.isin(TargetFamilies)
     ]
-    print(f"Filtered for families: {TargetFamilies}.")
-    print(f"Now working on cherrypicked database with {len(DFCherryPicked)} entries.")
-    
-    WriteRenamedFasta(DFCherryPicked, PathToFastaIn, FastaOut)
+print(f"Filtered for families: {TargetFamilies}.")
+print(f"Now working on completion-and-family-filtered database with {len(DFCompAndFamFiltered)} entries.")
+
+FamilyCounts = DFCompAndFamFiltered.index.value_counts()
+# Which families are most numerous
+FamilyCompletion = DFCompAndFamFiltered['Completion'].groupby(['family']).mean()
+# Which families are most complete
+FamilyMinCompletion = DFCompAndFamFiltered['Completion'].groupby(['family']).min()
+
+FinalRoundReport = pd.DataFrame(dict(Counts = FamilyCounts, AverageCompletion = FamilyCompletion, MinimalCompletion = FamilyMinCompletion)).sort_values(by=['Counts'], ascending=False)
+
+FinalRoundReport.to_csv("498SeqFinalReport.csv")
 
 
 #========================================================================
 
+# Set your standards and commit to choosing them
+# Keep in mind how they were aligned.
 
-def main():
-    parser = argparse.ArgumentParser(description ="python SequencePrepper.py -Database *.csv -FastaIn Supermatrix5079Seq.fa -Families 'Staphylinidae Elateridae' -FastaOut Test.fa")
-    parser.add_argument("-Database", help="Relative path of database containing renaming references.", required=True, dest="Database", type=str)
-    parser.add_argument("-FastaIn", help="Relative path of fasta containing the actual sequences.", required=True, dest="FastaIn", type=str)
-    parser.add_argument("-MinCompletion", help="Required percentage completion of sequences as float. Default 0.50.", default=0.50, dest="MinCompletion", type=float)
-    parser.add_argument("-Families", help="The list of families wanted in the outfile. List must be quoted and separated by a single space, like 'Staphylinidae Elateridae Nitidulidae'.", required=True, dest="Families", type=str)
-    parser.add_argument("-FastaOut", help="Name of output fasta to be written at the end.", required=True, dest="FastaOut", type=str)
-    parser.set_defaults(func=run)
-    args=parser.parse_args()
-    args.func(args)
+FastaOut = "498_Top10Fam_Completion80.fasta"
+WriteRenamedFasta(DFCompAndFamFiltered, FastaPath, FastaOut)
 
-if __name__ == '__main__':
-    main()
+
+#========================================================================
