@@ -35,6 +35,7 @@ def AppendSeqCompletion(CSVPath, FastaPath):
 
     return Outdf
 
+
 #========================================================================
 
 
@@ -109,7 +110,7 @@ def WriteRenamedFasta(df, ReadPath, WritePath):
 
     NameDict = {}
     for index, row in df.iterrows():
-        CommonName = f">{row['genus']}_{row['species']}_({row['family']})"
+        CommonName = f">{row['species']} ({row['family']})"
         NameDict[index] = CommonName
 
     with open(str(ReadPath), "r") as filein:

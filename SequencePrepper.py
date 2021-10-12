@@ -2,13 +2,13 @@
 
 # Description: Functions for taking a first look at all given data
 
-
 # Clean Rows second round, look for complete sequences (MinCompletion)
 # And specified families (TargetFamilies)
 
 # Fill "NaN"s with "unknown genus"/"unknown species"
 # Rename them like this: Genus Species, family
 # Write to a separate fasta file (FastaOut)
+
 
 #========================================================================
 
@@ -25,7 +25,7 @@ import pandas as pd
 # AppendSeqCompletion
 
 CSVPath = "AllMitogenomesMaster_2021-04-17v2021-04-25.csv"
-FastaPath = "Supermatrix498Seq.fasta"
+FastaPath = "Supermatrix5079Seq.fa"
 
 DF = AppendSeqCompletion(CSVPath, FastaPath)
 print(f"Read in full database with {len(DF)} entries.")
@@ -47,6 +47,7 @@ print("\n")
 print(f"Cleaning Cols")
 DFCleansed = CleanCols(DFCleanRowsOnly)
 print("\n")
+
 
 #========================================================================
 
@@ -78,7 +79,8 @@ CursoryGlanceReport.to_csv("498SeqAvailabilityReport.csv")
 # Set your standards and commit to choosing them
 # Keep in mind how they were aligned.
 
-MinCompletion = 0.80
+MinCompletion = 0.50
+# Cherrypick the non-overlap
 
 DFCompletionFiltered = DFIndexed[DFIndexed.Completion >= MinCompletion]
 print(f"Cherrypicked sequences that are at least {MinCompletion*100}% complete.")
@@ -87,6 +89,7 @@ print(f"Now working on completion-filtered database with {len(DFCompletionFilter
 
 
 #========================================================================
+
 
 # Fill NaNs
 # Write out CSV report describing family-wise completion now that
@@ -106,6 +109,7 @@ SecondRoundReport = pd.DataFrame(dict(Counts = FamilyCounts, AverageCompletion =
 
 
 #========================================================================
+
 
 # Pick top N families
 # Write out CSV report describing what was finally chosen
@@ -130,6 +134,7 @@ FinalRoundReport.to_csv("498SeqFinalReport.csv")
 
 
 #========================================================================
+
 
 # Set your standards and commit to choosing them
 # Keep in mind how they were aligned.
